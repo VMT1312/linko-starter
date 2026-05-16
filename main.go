@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -44,7 +42,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
-		logger.Info(fmt.Sprintf("failed to create store: %v", err))
+		logger.Error(fmt.Sprintf("failed to create store: %v", err))
 		return 1
 	}
 	s := newServer(*st, httpPort, cancel, logger)
@@ -58,34 +56,39 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	defer cancel()
 
 	if err := s.shutdown(shutdownCtx); err != nil {
-		logger.Info(fmt.Sprintf("failed to shutdown server: %v\n", err))
+		logger.Error(fmt.Sprintf("failed to shutdown server: %v\n", err))
 		return 1
 	}
 	if serverErr != nil {
-		logger.Info(fmt.Sprintf("server error: %v\n", serverErr))
+		logger.Error(fmt.Sprintf("server error: %v\n", serverErr))
 		return 1
 	}
 	return 0
 }
 
 func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
+	debugHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
 	if logFile != "" {
 		file, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 		if err != nil {
 			return nil, func() error { return nil }, err
 		}
-		bufferedFile := bufio.NewWriterSize(file, 8192)
-		multiWriter := io.MultiWriter(os.Stderr, bufferedFile)
+		infoHandler := slog.NewTextHandler(file, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		})
+		logger := slog.New(slog.NewMultiHandler(
+			debugHandler,
+			infoHandler,
+		))
 		close := func() error {
-			if err := bufferedFile.Flush(); err != nil {
-				return err
-			}
 			if err := file.Close(); err != nil {
 				return err
 			}
 			return nil
 		}
-		return slog.New(slog.NewTextHandler(multiWriter, nil)), close, nil
+		return logger, close, nil
 	}
-	return slog.New(slog.NewTextHandler(os.Stderr, nil)), func() error { return nil }, nil
+	return slog.New(slog.NewMultiHandler(debugHandler)), func() error { return nil }, nil
 }

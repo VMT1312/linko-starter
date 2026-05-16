@@ -52,7 +52,7 @@ func (s *server) start() error {
 	}
 	addr := ln.Addr()
 	tcpAddr := addr.(*net.TCPAddr)
-	s.logger.Info(fmt.Sprintf("Linko is running on http://localhost:%d", tcpAddr.Port))
+	s.logger.Debug(fmt.Sprintf("Linko is running on http://localhost:%d", tcpAddr.Port))
 	if err := s.httpServer.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -60,7 +60,7 @@ func (s *server) start() error {
 }
 
 func (s *server) shutdown(ctx context.Context) error {
-	s.logger.Info(fmt.Sprintln("Linko is shutting down"))
+	s.logger.Debug("Linko is shutting down")
 	return s.httpServer.Shutdown(ctx)
 }
 
