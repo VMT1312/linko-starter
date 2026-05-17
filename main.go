@@ -75,7 +75,7 @@ func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 		if err != nil {
 			return nil, func() error { return nil }, err
 		}
-		infoHandler := slog.NewTextHandler(file, &slog.HandlerOptions{
+		infoHandler := slog.NewJSONHandler(file, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
 		})
 		logger := slog.New(slog.NewMultiHandler(
