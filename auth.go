@@ -53,7 +53,6 @@ func (s *server) validatePassword(password, stored string) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		s.logger.Error("error validating password", slog.String("error", err.Error()))
 		return false, err
 	}
 	return true, nil
