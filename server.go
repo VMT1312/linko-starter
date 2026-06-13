@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"boot.dev/linko/internal/store"
@@ -102,7 +103,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			attrs := []any{
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
-				slog.String("client_ip", r.RemoteAddr),
+				slog.String("client_ip", redactIP(r.RemoteAddr)),
 				slog.Duration("duration", time.Since(start)),
 				slog.Int("request_body_bytes", spyReader.bytesRead),
 				slog.Int("response_status", spyWriter.statusCode),
@@ -123,6 +124,26 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				attrs...,
 			)
 		})
+	}
+}
+
+func redactIP(hostport string) string {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return hostport
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return hostport
+	}
+	ipv4 := ip.To4()
+	if ipv4 != nil {
+		o := strings.Split(ipv4.String(), ".")
+		o = o[0:3]
+		o = append(o, "x")
+		return strings.Join(o, ".")
+	} else {
+		return hostport
 	}
 }
 
