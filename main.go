@@ -17,6 +17,7 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 type closeFunc func() error
@@ -95,31 +96,46 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 
 func initializeLogger(logFile string) (*slog.Logger, closeFunc, error) {
 	isTerminal := isatty.IsCygwinTerminal(os.Stderr.Fd()) || isatty.IsTerminal(os.Stderr.Fd())
-	debugHandler := tint.NewHandler(os.Stderr, &tint.Options{
-		NoColor: !isTerminal,
-	})
+	handler := []slog.Handler{
+		tint.NewHandler(os.Stderr, &tint.Options{
+			Level:       slog.LevelDebug,
+			ReplaceAttr: replaceAttr,
+			NoColor:     !isTerminal,
+		}),
+	}
+	closers := []closeFunc{}
 	if logFile != "" {
-		file, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
-		if err != nil {
-			return nil, func() error { return nil }, err
+		logger := &lumberjack.Logger{
+			Filename:   logFile,
+			MaxSize:    1,
+			MaxAge:     28,
+			MaxBackups: 10,
+			LocalTime:  false,
+			Compress:   true,
 		}
-		infoHandler := slog.NewJSONHandler(file, &slog.HandlerOptions{
+		handler = append(handler, slog.NewJSONHandler(logger, &slog.HandlerOptions{
 			Level:       slog.LevelInfo,
 			ReplaceAttr: replaceAttr,
-		})
-		logger := slog.New(slog.NewMultiHandler(
-			debugHandler,
-			infoHandler,
-		))
+		}))
 		close := func() error {
-			if err := file.Close(); err != nil {
+			err := logger.Close()
+			if err != nil {
 				return err
 			}
 			return nil
 		}
-		return logger, close, nil
+		closers = append(closers, close)
 	}
-	return slog.New(slog.NewMultiHandler(debugHandler)), func() error { return nil }, nil
+	closer := func() error {
+		var errs []error
+		for _, close := range closers {
+			if err := close(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		return errors.Join(errs...)
+	}
+	return slog.New(slog.NewMultiHandler(handler...)), closer, nil
 }
 
 func replaceAttr(groups []string, a slog.Attr) slog.Attr {
