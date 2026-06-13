@@ -48,7 +48,11 @@ func (s *server) handlerShortenLink(w http.ResponseWriter, r *http.Request) {
 	// s.logger.Info("Shortening URL", slog.String("URL", longURL))
 	u, err := url.Parse(longURL)
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		httpError(r.Context(), w, http.StatusBadRequest, err)
+		if err != nil {
+			httpError(r.Context(), w, http.StatusBadRequest, err)
+			return
+		}
+		httpError(r.Context(), w, http.StatusBadRequest, errors.New("invalid URL"))
 		return
 	}
 	// s.logger.Info("Parsed URL", slog.String("scheme", u.Scheme), slog.String("host", u.Host))
