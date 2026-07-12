@@ -20,6 +20,11 @@ import (
 	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 type closeFunc func() error
@@ -47,6 +52,13 @@ func main() {
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
+	shutdown, err := initTracing(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialised tracing: %v", err)
+		return 1
+	}
+	defer shutdown(context.Background())
+
 	logFile := os.Getenv("LINKO_LOG_FILE")
 	logger, close, err := initializeLogger(logFile)
 	if err != nil {
@@ -188,4 +200,21 @@ func errorAttrs(err error) []slog.Attr {
 		})
 	}
 	return attrs
+}
+
+func initTracing(ctx context.Context) (func(context.Context) error, error) {
+	exp, err := otlptracegrpc.New(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exp,
+			sdktrace.WithBatchTimeout(2*time.Second),
+		),
+		sdktrace.WithResource(resource.Default()),
+	)
+
+	otel.SetTracerProvider(tp)
+	return tp.Shutdown, nil
 }
